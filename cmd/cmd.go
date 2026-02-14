@@ -6,22 +6,24 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
+	"github.com/annis-souames/atomicni/pkg/atomicni"
 	"github.com/containernetworking/cni/pkg/skel"
-
-	"github.com/containernetworking/plugins/pkg/ns"
+	"github.com/containernetworking/cni/pkg/types"
 )
 
 // Add adds a container to a network or apply modifications.
 func Add(args *skel.CmdArgs) error {
-	// get the network namespace from args env NETNS
-	netns, err := ns.GetNS(args.Netns)
+	plugin := atomicni.NewPlugin()
+	res, err := plugin.Add(context.Background(), args)
 	if err != nil {
-		return fmt.Errorf("failed to get netns %q: %v", args.Netns, err)
+		return err
 	}
-	// Implementation for ADD command
-	fmt.Println("Executing cmdAdd in netns:", netns.Path())
+	if err := types.PrintResult(res, res.CNIVersion); err != nil {
+		return fmt.Errorf("print CNI result: %w", err)
+	}
 	return nil
 }
 
