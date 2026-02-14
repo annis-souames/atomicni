@@ -20,6 +20,7 @@ type Plugin struct {
 	IPAM   ipam.Allocator
 }
 
+// NewPlugin wires default Linux net operations and file-backed IPAM.
 func NewPlugin() *Plugin {
 	return &Plugin{
 		NetOps: netops.NewNetlinkOps(),
@@ -125,20 +126,24 @@ func (p *Plugin) Add(ctx context.Context, args *skel.CmdArgs) (*current.Result, 
 	return res, nil
 }
 
+// cloneIP returns a detached copy so callers can safely mutate the value.
 func cloneIP(ip net.IP) net.IP {
 	dup := make(net.IP, len(ip))
 	copy(dup, ip)
 	return dup
 }
 
+// rollbackStack stores cleanup actions and executes them in reverse order.
 type rollbackStack struct {
 	fns []func()
 }
 
+// Push registers one cleanup function.
 func (r *rollbackStack) Push(fn func()) {
 	r.fns = append(r.fns, fn)
 }
 
+// Run executes all cleanup functions in LIFO order.
 func (r *rollbackStack) Run() {
 	for i := len(r.fns) - 1; i >= 0; i-- {
 		r.fns[i]()

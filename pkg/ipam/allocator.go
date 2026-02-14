@@ -28,10 +28,12 @@ type Allocator interface {
 // FileAllocator keeps allocation state on local disk.
 type FileAllocator struct{}
 
+// NewFileAllocator returns an allocator that persists state in JSON files.
 func NewFileAllocator() *FileAllocator {
 	return &FileAllocator{}
 }
 
+// Allocate returns a stable IPv4 for the container, creating one when needed.
 func (a *FileAllocator) Allocate(_ context.Context, req AllocationRequest) (net.IP, error) {
 	if err := validateRequest(req); err != nil {
 		return nil, err
@@ -76,6 +78,7 @@ func (a *FileAllocator) Allocate(_ context.Context, req AllocationRequest) (net.
 	return selected, nil
 }
 
+// Release removes a container allocation if it exists.
 func (a *FileAllocator) Release(_ context.Context, dataDir, network, containerID string) error {
 	if network == "" || containerID == "" {
 		return errors.New("network and containerID are required")
@@ -102,6 +105,7 @@ func (a *FileAllocator) Release(_ context.Context, dataDir, network, containerID
 	return saveState(statePath, st)
 }
 
+// GetByContainer reads a container allocation without creating one.
 func (a *FileAllocator) GetByContainer(_ context.Context, dataDir, network, containerID string) (net.IP, bool, error) {
 	if network == "" || containerID == "" {
 		return nil, false, errors.New("network and containerID are required")
@@ -129,6 +133,7 @@ func (a *FileAllocator) GetByContainer(_ context.Context, dataDir, network, cont
 	return ip, true, nil
 }
 
+// findNextIP performs next-fit allocation while skipping reserved addresses.
 func (a *FileAllocator) findNextIP(st *state, req AllocationRequest) (net.IP, error) {
 	start := ipv4ToUint(req.RangeStart)
 	end := ipv4ToUint(req.RangeEnd)
@@ -170,6 +175,7 @@ func (a *FileAllocator) findNextIP(st *state, req AllocationRequest) (net.IP, er
 	return nil, errors.New("no available IP addresses")
 }
 
+// validateRequest checks required fields and range constraints for allocation.
 func validateRequest(req AllocationRequest) error {
 	if req.DataDir == "" {
 		return errors.New("dataDir is required")
@@ -201,6 +207,7 @@ func validateRequest(req AllocationRequest) error {
 	return nil
 }
 
+// networkAndBroadcast derives network and broadcast IPv4 addresses from a CIDR.
 func networkAndBroadcast(subnet *net.IPNet) (net.IP, net.IP) {
 	network := subnet.IP.Mask(subnet.Mask).To4()
 	mask := net.IP(subnet.Mask).To4()
@@ -211,11 +218,13 @@ func networkAndBroadcast(subnet *net.IPNet) (net.IP, net.IP) {
 	return network, broadcast
 }
 
+// ipv4ToUint converts IPv4 to big-endian uint32 for range math.
 func ipv4ToUint(ip net.IP) uint32 {
 	ip = ip.To4()
 	return uint32(ip[0])<<24 | uint32(ip[1])<<16 | uint32(ip[2])<<8 | uint32(ip[3])
 }
 
+// uintToIPv4 converts big-endian uint32 back to IPv4.
 func uintToIPv4(v uint32) net.IP {
 	return net.IPv4(byte(v>>24), byte(v>>16), byte(v>>8), byte(v)).To4()
 }

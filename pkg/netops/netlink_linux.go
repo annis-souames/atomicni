@@ -28,10 +28,12 @@ type NetOps interface {
 // NetlinkOps is a Linux implementation of NetOps backed by iproute2 commands.
 type NetlinkOps struct{}
 
+// NewNetlinkOps returns a NetOps implementation backed by the ip command.
 func NewNetlinkOps() *NetlinkOps {
 	return &NetlinkOps{}
 }
 
+// EnsureBridge creates the bridge if needed, brings it up, and sets gateway CIDR.
 func (n *NetlinkOps) EnsureBridge(name string, gateway *net.IPNet) error {
 	if !linkExists(name) {
 		if _, err := runIP("link", "add", "name", name, "type", "bridge"); err != nil && !isAlreadyExists(err) {
@@ -58,6 +60,7 @@ func (n *NetlinkOps) EnsureBridge(name string, gateway *net.IPNet) error {
 	return nil
 }
 
+// CreateVethPair creates host/container veth interfaces and applies MTU.
 func (n *NetlinkOps) CreateVethPair(hostName, peerName string, mtu int) error {
 	if hostName == "" || peerName == "" {
 		return errors.New("host and peer names are required")
@@ -81,6 +84,7 @@ func (n *NetlinkOps) CreateVethPair(hostName, peerName string, mtu int) error {
 	return nil
 }
 
+// AttachHostVethToBridge attaches host veth to bridge and sets it up.
 func (n *NetlinkOps) AttachHostVethToBridge(hostName, bridgeName string) error {
 	if _, err := runIP("link", "set", "dev", hostName, "master", bridgeName); err != nil {
 		return fmt.Errorf("attach host veth to bridge: %w", err)
@@ -91,6 +95,7 @@ func (n *NetlinkOps) AttachHostVethToBridge(hostName, bridgeName string) error {
 	return nil
 }
 
+// MoveToNamespace moves a link from host namespace into target namespace.
 func (n *NetlinkOps) MoveToNamespace(linkName string, target ns.NetNS) error {
 	if !linkExists(linkName) {
 		return nil
@@ -101,6 +106,7 @@ func (n *NetlinkOps) MoveToNamespace(linkName string, target ns.NetNS) error {
 	return nil
 }
 
+// PrepareContainerLink renames and brings up the container link, then reads MAC.
 func (n *NetlinkOps) PrepareContainerLink(target ns.NetNS, currentName, targetName string) (string, error) {
 	var mac string
 	if err := target.Do(func(_ ns.NetNS) error {
@@ -128,6 +134,7 @@ func (n *NetlinkOps) PrepareContainerLink(target ns.NetNS, currentName, targetNa
 	return mac, nil
 }
 
+// AddAddressAndRoute configures pod IPv4 address and default route.
 func (n *NetlinkOps) AddAddressAndRoute(target ns.NetNS, ifName string, addr *net.IPNet, gateway net.IP) error {
 	return target.Do(func(_ ns.NetNS) error {
 		if _, err := runIP("addr", "add", addr.String(), "dev", ifName); err != nil && !isAlreadyExists(err) {
@@ -141,6 +148,7 @@ func (n *NetlinkOps) AddAddressAndRoute(target ns.NetNS, ifName string, addr *ne
 	})
 }
 
+// DeleteLink deletes a host-namespace link if it exists.
 func (n *NetlinkOps) DeleteLink(name string) error {
 	if _, err := runIP("link", "del", "dev", name); err != nil {
 		if isLinkNotFound(err) {
@@ -151,6 +159,7 @@ func (n *NetlinkOps) DeleteLink(name string) error {
 	return nil
 }
 
+// DeleteLinkInNS deletes a link inside target namespace if it exists.
 func (n *NetlinkOps) DeleteLinkInNS(target ns.NetNS, name string) error {
 	return target.Do(func(_ ns.NetNS) error {
 		if _, err := runIP("link", "del", "dev", name); err != nil {
@@ -163,10 +172,12 @@ func (n *NetlinkOps) DeleteLinkInNS(target ns.NetNS, name string) error {
 	})
 }
 
+// GetLinkMAC reads the MAC address of a host-namespace link.
 func (n *NetlinkOps) GetLinkMAC(name string) (string, error) {
 	return readMAC(name)
 }
 
+// runIP executes iproute2 and returns trimmed output with contextual errors.
 func runIP(args ...string) (string, error) {
 	cmd := exec.Command("ip", args...)
 	out, err := cmd.CombinedOutput()
@@ -180,11 +191,13 @@ func runIP(args ...string) (string, error) {
 	return output, nil
 }
 
+// linkExists checks whether a link name is present in the current namespace.
 func linkExists(name string) bool {
 	_, err := runIP("link", "show", "dev", name)
 	return err == nil
 }
 
+// isAlreadyExists checks for common "already exists" netlink/iproute errors.
 func isAlreadyExists(err error) bool {
 	if err == nil {
 		return false
@@ -192,6 +205,7 @@ func isAlreadyExists(err error) bool {
 	return strings.Contains(err.Error(), "File exists")
 }
 
+// isLinkNotFound normalizes not-found cases across iproute2 error forms.
 func isLinkNotFound(err error) bool {
 	if err == nil {
 		return false
@@ -201,6 +215,7 @@ func isLinkNotFound(err error) bool {
 		strings.Contains(err.Error(), "does not exist")
 }
 
+// readMAC reads interface MAC address from sysfs.
 func readMAC(ifName string) (string, error) {
 	content, err := os.ReadFile(filepath.Join("/sys/class/net", ifName, "address"))
 	if err != nil {

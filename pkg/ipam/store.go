@@ -15,6 +15,7 @@ type state struct {
 	LastReserved  string            `json:"lastReserved,omitempty"`
 }
 
+// newState returns an initialized empty allocation state.
 func newState() *state {
 	return &state{
 		ContainerToIP: map[string]string{},
@@ -22,6 +23,7 @@ func newState() *state {
 	}
 }
 
+// lockNetwork creates/locks a per-network file and returns state file path.
 func lockNetwork(dataDir, network string) (*os.File, string, error) {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, "", fmt.Errorf("create data dir: %w", err)
@@ -39,11 +41,13 @@ func lockNetwork(dataDir, network string) (*os.File, string, error) {
 	return f, filepath.Join(dataDir, network+".json"), nil
 }
 
+// unlockNetwork releases the advisory lock and closes the file handle.
 func unlockNetwork(f *os.File) {
 	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 	_ = f.Close()
 }
 
+// loadState reads state from disk, returning an empty state when missing.
 func loadState(path string) (*state, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -69,6 +73,7 @@ func loadState(path string) (*state, error) {
 	return st, nil
 }
 
+// saveState atomically persists state to disk using write-then-rename.
 func saveState(path string, st *state) error {
 	content, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
